@@ -1,0 +1,81 @@
+version: '2.1'
+services:
+  python-bot:
+    build: './python-bot'
+    networks:
+      - webproxy
+    ports:
+      - "5555:5555"
+  nginx:
+    image: nginx
+    volumes:
+      - ./nginx/:/etc/nginx/conf.d/
+    networks:
+      - webproxy
+    ports:
+      - "3111:3111"
+  event-watchers:
+    build: './event-watchers'
+    volumes:
+      - './event-watchers:/src'
+      - /src/node_modules/
+    networks:
+      - webproxy
+    command: bash -c "npm i && npm run start-dev"
+    logging:
+      driver: none
+  api-server:
+    build: './api-server'
+    volumes:
+      - './api-server:/src'
+      - /src/node_modules/
+    networks:
+      - webproxy
+    command: bash -c "npm i && DEBUG=socket.io* npm run start-dev"
+    ports:
+      - '3000:3000'
+  mongodb:
+    image: mongo:4.0.6
+    networks:
+      - webproxy
+    healthcheck:
+      test: echo 'db.stats().ok' | mongo localhost:27017/zenbrain --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    command: mongod --smallfiles --replSet rs0 # --quiet
+    ports:
+      - '27017:27017'
+    logging:
+      driver: none
+  mongosetup:
+    image: mongo:4.0.6
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - webproxy
+    entrypoint: [ "bash", "/scripts/mongosetup.sh" ]
+    logging:
+      driver: none
+  nats:
+    image: nats:1.4.1
+    networks:
+      - webproxy
+    entrypoint: "/gnatsd -DV"
+    ports:
+      - '4222:4222'
+    logging:
+      driver: none
+  orders-watchdog:
+    build: './orders-watchdog'
+    volumes:
+      - './orders-watchdog:/src'
+      - '/src/node_modules/'
+    networks: 
+        - webproxy
+    command:  bash -c "echo Expired server is working && npm i && npm run start-dev"
+    logging:
+      driver: none
+networks:
+  webproxy:
+    driver: bridge
